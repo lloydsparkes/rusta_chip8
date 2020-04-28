@@ -9,3 +9,8 @@ edition = "2018"
 [dependencies]
 num_enum = "0.4.3"
 rand = "0.7.3"
+
+[dependencies.sdl2]
+version = "0.34"
+default-features = false
+features = [ "gfx", "bundled" ]

@@ -1,12 +1,15 @@
 use std::u8;
 use rand::Rng;
 
+const CHIP8_WIDTH: usize = 64;
+const CHIP8_HEIGHT: usize = 32;
+
 pub struct Chip8Cpu{
     memory: [u8; 4096],
     registers: [u8; 16],
     index_register: u16,
     program_counter: usize,
-    graphics_memory: [bool; 64*32],
+    graphics_memory: [u8; CHIP8_WIDTH*CHIP8_HEIGHT],
     delay_timer: u8,
     sound_timer: u8,
     next_increment: usize,
@@ -23,7 +26,7 @@ impl Chip8Cpu{
             registers: [0; 16],
             index_register: 0,
             program_counter: 0x200,
-            graphics_memory: [false; 64*32],
+            graphics_memory: [0; 64*32],
             delay_timer: 0,
             sound_timer: 0,
             next_increment: 2,
@@ -54,7 +57,7 @@ impl Chip8Cpu{
             0x0000 => {
                 match joined_opcode {
                     0x00E0 => { }, // Display Clear
-                    0x00EE => { }, // Return
+                    0x00EE => { self.ret() }, // Return
                     _ => { self.call(op_ad) }
                 }
             }, 
@@ -84,7 +87,7 @@ impl Chip8Cpu{
             0xA000 => { self.s_i(op_ad)},
             0xB000 => { self.jump(self.g_r16(0) + op_ad)},
             0xC000 => { self.s_r(op_ra, self.rand(op_c))},
-            0xD000 => { self.draw_sprite(self.g_r8(op_ra), self.g_r8(op_rb)) },
+            0xD000 => { self.draw_sprite(self.g_r8(op_ra), self.g_r8(op_rb), op_c & 0x0F) },
             0xE000 => { 
                 match op_c {
                     0x9E => { self.compare(self.g_r8(op_ra), self.get_key(), true) },
@@ -114,8 +117,23 @@ impl Chip8Cpu{
         return false;
     }
 
-    fn draw_sprite(&self, x: u8, y: u8){
-
+    fn draw_sprite(&mut self, x: u8, y: u8, n: u8){
+        let base_src = self.index_register as usize;
+        let source_x = self.g_r8(x) as usize;
+        let source_y = self.g_r8(y) as usize;
+        self.s_r(0x0F, 0);
+        for y in 0usize..(n as usize) {
+            let pixel = self.memory[base_src + y as usize];
+            for x in 0usize..8{
+                if pixel & (0x80 >> x) != 0{
+                    let loc = (x + source_x + (y + source_y)) * 64;
+                    if self.graphics_memory[loc] == 1 {
+                        self.s_r(0x0F, 1)
+                    }
+                    self.graphics_memory[loc] = self.graphics_memory[loc]^1;
+                }
+            }
+        }
     }
 
     fn rand(&self, constant: u8) -> u8{
@@ -125,12 +143,22 @@ impl Chip8Cpu{
         return rd & constant;
     }
 
-    fn dump_reg(&self, limit: u8) {
-
+    fn dump_reg(&mut self, limit: u8) {
+        let max_var = limit as usize;
+        let mut dest = self.index_register as usize;
+        for n in 0..max_var {
+            self.memory[dest] = self.registers[n];
+            dest = dest + 1;
+        }
     }
 
-    fn load_reg(&self, limit: u8) {
-        
+    fn load_reg(&mut self, limit: u8) {
+        let max_var = limit as usize;
+        let mut src = self.index_register as usize;
+        for n in 0..max_var {
+            self.registers[n] = self.memory[src];
+            src = src + 1;
+        }
     }
 
     fn get_key(&self, ) -> u8 {
@@ -141,8 +169,11 @@ impl Chip8Cpu{
         return 0;
     }
 
-    fn set_bcd(&self, value: u8){
-
+    fn set_bcd(&mut self, value: u8){
+        let dest = self.index_register as usize;
+        self.memory[dest] = (value >> 8) / 100;
+        self.memory[dest + 1] = ((value >> 8) / 10) % 10;
+        self.memory[dest + 2] = ((value >> 8) % 100) % 10;
     }
 
     fn add(&mut self, out_r: u8, a: u8, b: u8) {
