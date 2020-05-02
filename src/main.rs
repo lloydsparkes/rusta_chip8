@@ -1,8 +1,13 @@
-use std::u8;
-use rand::Rng;
+extern crate sdl2;
 
-const CHIP8_WIDTH: usize = 64;
-const CHIP8_HEIGHT: usize = 32;
+mod ui;
+
+use std::u8;
+use std::env;
+use std::thread;
+use std::time::Duration;
+use rand::Rng;
+use ui::{Display, CHIP8_WIDTH, CHIP8_HEIGHT};
 
 pub struct Chip8Cpu{
     memory: [u8; 4096],
@@ -271,14 +276,14 @@ impl Chip8Cpu{
     }
 }
 
-fn update_graphics(){
-
-}
-
 fn main() {
-    println!("Hello, world!");
+    let sleep_duration = Duration::from_millis(2);
+    let sdl_context = sdl2::init().unwrap();
+    let args: Vec<String> = env::args().collect();
+    let cartridge_filename = &args[1];
 
     // Setup Graphics
+    let mut dsp = Display::new(&sdl_context);
     // Setup Input
 
     let mut cpu = Chip8Cpu::new();
@@ -291,9 +296,11 @@ fn main() {
         }
 
         if cpu.should_draw(){
-            update_graphics();
+            dsp.draw(&cpu.graphics_memory);
         }
         
         cpu.update_input();
+
+        thread::sleep(sleep_duration);
     }
 }

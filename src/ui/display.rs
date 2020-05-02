@@ -4,8 +4,8 @@ use sdl2::rect::Rect;
 use sdl2::render::Canvas;
 use sdl2::video::Window;
 
-use CHIP8_WIDTH;
-use CHIP8_HEIGHT;
+pub const CHIP8_WIDTH: usize = 64;
+pub const CHIP8_HEIGHT: usize = 32;
 
 const SCALE_FACTOR: u32 = 20;
 const SCREEN_WIDTH: u32 = (CHIP8_WIDTH as u32) * SCALE_FACTOR;
@@ -26,7 +26,7 @@ impl Display{
         .position_centered()
         .opengl()
         .build()
-        .unwrap()
+        .unwrap();
 
         let mut canvas = window.into_canvas().build().unwrap();
 
@@ -37,19 +37,21 @@ impl Display{
         Display { canvas: canvas }
     }
 
-    pub fun draw(&mut self, pixels: &[u8: CHIP8_WIDTH*CHIP8_HEIGHT]){
+    pub fn draw(&mut self, pixels: &[u8; CHIP8_WIDTH*CHIP8_HEIGHT]){
         for row in 0..CHIP8_WIDTH{
             for column in 0..CHIP8_HEIGHT{
                 let index = row * CHIP8_WIDTH + column;
-                let col = color(pixels[index]);
-                self.canvas.set_draw_color(col)
-                let _ = self.canvas.fill_rect(Rect::new(col*SCALE_FACTOR, row*SCALE_FACTOR, SCALE_FACTOR, SCALE_FACTOR));
+                let col = self.color(pixels[index]);
+                self.canvas.set_draw_color(col);
+                let cScale = (column as i32) * SCALE_FACTOR as i32;
+                let rScale = (row as i32) * SCALE_FACTOR as i32;
+                let _ = self.canvas.fill_rect(Rect::new(cScale, rScale, SCALE_FACTOR, SCALE_FACTOR));
             }
         }
         self.canvas.present();
     }
 
-    fn color(value: u8) -> pixels::Color {
+    fn color(&self, value: u8) -> pixels::Color {
         if value == 0 {
             pixels::Color::RGB(0, 0, 0)
         } else {
