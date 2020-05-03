@@ -43,9 +43,9 @@ impl Display{
                 let index = row * CHIP8_WIDTH + column;
                 let col = self.color(pixels[index]);
                 self.canvas.set_draw_color(col);
-                let cScale = (column as i32) * SCALE_FACTOR as i32;
-                let rScale = (row as i32) * SCALE_FACTOR as i32;
-                let _ = self.canvas.fill_rect(Rect::new(cScale, rScale, SCALE_FACTOR, SCALE_FACTOR));
+                let c_scale = (column as i32) * SCALE_FACTOR as i32;
+                let r_scale = (row as i32) * SCALE_FACTOR as i32;
+                let _ = self.canvas.fill_rect(Rect::new(c_scale, r_scale, SCALE_FACTOR, SCALE_FACTOR));
             }
         }
         self.canvas.present();
