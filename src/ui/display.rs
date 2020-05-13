@@ -37,11 +37,10 @@ impl Display{
         Display { canvas: canvas }
     }
 
-    pub fn draw(&mut self, pixels: &[u8; CHIP8_WIDTH*CHIP8_HEIGHT]){
-        for row in 0..CHIP8_WIDTH{
-            for column in 0..CHIP8_HEIGHT{
-                let index = row * CHIP8_WIDTH + column;
-                let col = self.color(pixels[index]);
+    pub fn draw(&mut self, pixels: &[[u8; CHIP8_WIDTH]; CHIP8_HEIGHT]){
+        for row in 0..CHIP8_HEIGHT{
+            for column in 0..CHIP8_WIDTH{
+                let col = self.color(pixels[row][column]);
                 self.canvas.set_draw_color(col);
                 let c_scale = (column as i32) * SCALE_FACTOR as i32;
                 let r_scale = (row as i32) * SCALE_FACTOR as i32;

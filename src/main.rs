@@ -8,6 +8,7 @@ use std::thread;
 use std::time::Duration;
 
 use ui::Display;
+use ui::Input;
 use chip8::Chip8Cpu;
 
 fn main() {
@@ -19,21 +20,24 @@ fn main() {
     // Setup Graphics
     let mut dsp = Display::new(&sdl_context);
     // Setup Input
+    let mut input = Input::new(&sdl_context);
 
     let mut cpu = Chip8Cpu::new();
+    cpu.load_rom(cartridge_filename);
 
-    let i = 0;
-    while i == 0 {
+    while let Ok(keys) = input.poll() {
 
-        if !cpu.cycle() {
-            break;
-        }
+        let (should_draw, should_beep) = cpu.cycle(keys);
 
-        if cpu.should_draw(){
+        if should_draw {
             dsp.draw(&cpu.graphics_memory);
         }
-        
-        cpu.update_input();
+    
+        if(should_beep){
+            // Start beep
+        } else {
+            // End Beep
+        }
 
         thread::sleep(sleep_duration);
     }

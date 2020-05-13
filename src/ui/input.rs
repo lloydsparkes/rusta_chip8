@@ -3,18 +3,20 @@ use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
 
 pub struct Input{
-    events sdl2::EventPump;
+    events: sdl2::EventPump,
 }
 
 impl Input{
-    pub fn new(sdl_context: &seld2::Sdl){
+    pub fn new(sdl_context: &sdl2::Sdl) -> Self {
         Input { events: sdl_context.event_pump().unwrap() }
     }
 
-    pub fn poll(&mut self, &input_keys[u8; 16]) {
+    pub fn poll(&mut self) -> Result<[bool; 16], ()> {
+        let mut selected_keys = [false; 16];
+
         for event in self.events.poll_iter(){
             if let Event::Quit { .. } = event {
-                return;
+                return Err(())
             }
         }
 
@@ -46,8 +48,10 @@ impl Input{
             };
 
             if let Some(i) = index {
-                input_keys[i] = 0x01;
+                selected_keys[i] = true;
             }
         }
+
+        return Ok(selected_keys);
     }
 }

@@ -2,6 +2,8 @@
 
 use rand::Rng;
 use std::u8;
+use std::fs::File;
+use std::io::Read;
 
 use ui::{CHIP8_WIDTH, CHIP8_HEIGHT};
 
@@ -10,10 +12,11 @@ pub struct Chip8Cpu{
     registers: [u8; 16],
     index_register: u16,
     program_counter: usize,
-    pub graphics_memory: [u8; CHIP8_WIDTH*CHIP8_HEIGHT],
+    pub graphics_memory: [[u8; CHIP8_WIDTH]; CHIP8_HEIGHT],
     delay_timer: u8,
     sound_timer: u8,
     next_increment: usize,
+    refresh_graphics: bool,
 
     stack: [usize; 16],
     stack_pointer: usize,
@@ -27,10 +30,11 @@ impl Chip8Cpu{
             registers: [0; 16],
             index_register: 0,
             program_counter: 0x200,
-            graphics_memory: [0; CHIP8_WIDTH*CHIP8_HEIGHT],
+            graphics_memory: [[0; CHIP8_WIDTH]; CHIP8_HEIGHT],
             delay_timer: 0,
             sound_timer: 0,
             next_increment: 2,
+            refresh_graphics: false,
 
             stack: [0; 16],
             stack_pointer: 0,
@@ -39,7 +43,30 @@ impl Chip8Cpu{
         return new_cpu;
     }
 
-    pub fn cycle(&mut self) -> bool {
+    pub fn load_rom(&mut self, filename: &str) {
+        let mut f = File::open(filename).expect("file not found");
+        let mut buffer = [0u8; 3584];
+        let bytes_read = if let Ok(bytes_read) = f.read(&mut buffer) {
+            bytes_read
+        } else {
+            0
+        };
+
+        for (i, &byte) in FONT_SET.iter().enumerate() {
+            self.memory[i] = byte;
+        }
+
+        for (i, &byte) in buffer.iter().enumerate() {
+            let addr = 0x200+i;
+            if addr < 4096 {
+                self.memory[0x200+i] = byte;
+            } else {
+                break;
+            }
+        }
+    }
+
+    pub fn cycle(&mut self, keypad: [bool; 16]) -> (bool, bool) {
         // Fetch
         let opcode_1 = self.memory[self.program_counter];
         let opcode_2 = self.memory[self.program_counter+1];
@@ -49,17 +76,18 @@ impl Chip8Cpu{
         let op_i = joined_opcode & 0xF000; //Op Code Index
         let op_ad = joined_opcode & 0x0FFF; //Op Code Address
         let op_ra = ((joined_opcode >> 8) as u8) & 0x0F; //Op Code Reg A
-        let op_rb = (joined_opcode as u8) & 0xF0; //Op Code Reg B
+        let op_rb = ((joined_opcode as u8) & 0xF0) >> 4; //Op Code Reg B
         let op_c = joined_opcode as u8; // Op Code Constant
 
         self.next_increment = 2;
 
+        println!("PC: {:X} OP {:X} OP_I: {:X} OP_ADDR: {:X} OP_REGA: {:X} OP_REGB: {:X} OP_CONSTANT:{:X}", self.program_counter, joined_opcode, op_i, op_ad, op_ra, op_rb, op_c);
         match op_i {
             0x0000 => {
                 match joined_opcode {
                     0x00E0 => { }, // Display Clear
                     0x00EE => { self.ret() }, // Return
-                    _ => { self.call(op_ad) }
+                    _ => { } //self.call(op_ad) }
                 }
             }, 
             0x1000 => { self.jump(op_ad) },
@@ -68,7 +96,7 @@ impl Chip8Cpu{
             0x4000 => { self.compare(self.g_r8(op_ra), op_c, true) },
             0x5000 => { self.compare(self.g_r8(op_ra), self.g_r8(op_rb), false)},
             0x6000 => { self.s_r(op_ra, op_c) },
-            0x7000 => { self.s_r(op_ra, self.g_r8(op_ra) + op_c) },
+            0x7000 => { self.s_r(op_ra, ((self.g_r8(op_ra) as u16) + op_c as u16) as u8) },
             0x8000 => { 
                 let lsb = op_c & 0x0F;
                 match lsb {
@@ -88,18 +116,25 @@ impl Chip8Cpu{
             0xA000 => { self.s_i(op_ad)},
             0xB000 => { self.jump(self.g_r16(0) + op_ad)},
             0xC000 => { self.s_r(op_ra, self.rand(op_c))},
-            0xD000 => { self.draw_sprite(self.g_r8(op_ra), self.g_r8(op_rb), op_c & 0x0F) },
+            0xD000 => { self.draw_sprite(op_ra, op_rb, op_ad as usize) },
             0xE000 => { 
                 match op_c {
-                    0x9E => { self.compare(self.g_r8(op_ra), self.get_key(), true) },
-                    0xA1 => { self.compare(self.g_r8(op_ra), self.get_key(), false) },
+                    0x9E => { self.compare(self.g_r8(op_ra), self.get_key(keypad), true) },
+                    0xA1 => { self.compare(self.g_r8(op_ra), self.get_key(keypad), false) },
                     _ => {} // Error
                 }
             },
             0xF000 => {
                 match op_c{
                     0x07 => { self.s_r(op_ra, self.delay_timer)},
-                    0x0A => { self.s_r(op_ra, self.get_key())},
+                    0x0A => {
+                        if self.get_key(keypad) > 0 { 
+                            self.s_r(op_ra, self.get_key(keypad))
+                        } else {
+                            // Wait for input, so dont increment the increment
+                            self.next_increment = 0;
+                        }
+                    },
                     0x15 => { self.s_dt(self.g_r8(op_ra))},
                     0x18 => { self.s_st(self.g_r8(op_ra))},
                     0x1E => { self.s_i(self.index_register + self.g_r16(op_ra))},
@@ -115,26 +150,41 @@ impl Chip8Cpu{
         self.program_counter = self.program_counter + self.next_increment;
 
         // Update Timers
-        return false;
+        if self.delay_timer > 0 {
+            self.delay_timer -= 1;
+        }
+        if self.sound_timer > 0 {
+            self.sound_timer -= 1;
+        }
+
+        return (self.refresh_graphics, self.sound_timer > 0);
     }
 
-    fn draw_sprite(&mut self, x: u8, y: u8, n: u8){
+    fn get_key(&self, keypad: [bool; 16]) -> u8 {
+        for i in 0..keypad.len(){
+            if keypad[i] {
+                return i as u8;
+            }
+        }
+        return 0;
+    }
+
+    fn draw_sprite(&mut self, x: u8, y: u8, n: usize){
         let base_src = self.index_register as usize;
         let source_x = self.g_r8(x) as usize;
         let source_y = self.g_r8(y) as usize;
-        self.s_r(0x0F, 0);
-        for y in 0usize..(n as usize) {
-            let pixel = self.memory[base_src + y as usize];
-            for x in 0usize..8{
-                if pixel & (0x80 >> x) != 0{
-                    let loc = (x + source_x + (y + source_y)) * 64;
-                    if self.graphics_memory[loc] == 1 {
-                        self.s_r(0x0F, 1)
-                    }
-                    self.graphics_memory[loc] = self.graphics_memory[loc]^1;
-                }
+        let mut flag = 0;
+        for byte in 0usize..n {
+            let y = (source_y + byte) % CHIP8_HEIGHT;
+            for bit in 0usize..8{
+                let x = source_x + bit % CHIP8_WIDTH;
+                let color = (self.memory[base_src+byte] >> (7-bit)) & 1;
+                flag |= color & self.graphics_memory[y][x];
+                self.graphics_memory[y][x] = color;
             }
         }
+        self.s_r(0x0F, flag);
+        self.refresh_graphics = true;
     }
 
     fn rand(&self, constant: u8) -> u8{
@@ -162,10 +212,6 @@ impl Chip8Cpu{
         }
     }
 
-    fn get_key(&self, ) -> u8 {
-        return 0;
-    }
-
     fn get_sprite(&self, sprite_n: u8) -> u16 {
         return 0;
     }
@@ -189,12 +235,13 @@ impl Chip8Cpu{
     }
 
     fn sub(&mut self, out_r: u8, a: u8, b: u8) {
-        if a > b {
+        let (res, carry) = a.overflowing_sub(b);
+        if carry {
             self.s_r(0x0F, 0x01)
         } else {
             self.s_r(0x0F, 0x00)
         }
-        self.s_r(out_r, a - b);
+        self.s_r(out_r, res);
     }
 
     fn shift(&mut self, out_r: u8, a: u8, left: bool) {
@@ -220,6 +267,7 @@ impl Chip8Cpu{
     }
 
     fn g_r8(&self, reg: u8) -> u8 {
+        println!("G_R8 {}", reg);
         return self.registers[reg as usize];
     }
 
@@ -236,8 +284,9 @@ impl Chip8Cpu{
     }
 
     fn call(&mut self, dest: u16) {
-        self.stack[self.stack_pointer as usize] = self.program_counter;
-        self.stack_pointer = self.stack_pointer + 1;
+        println!("CALL SP:{:X} DEST:{:X} PC:{:X}", self.stack_pointer, dest, self.program_counter);
+        self.stack[self.stack_pointer as usize] = self.program_counter + 2;
+        self.stack_pointer += 1;
         self.program_counter = dest as usize;
         self.next_increment = 0;
     }
@@ -263,12 +312,87 @@ impl Chip8Cpu{
     fn s_r(&mut self, dest_reg: u8, value: u8) {
         self.registers[dest_reg as usize] = value;
     }
-
-    pub fn should_draw(&self) -> bool {
-        return false;
-    }
-
-    pub fn update_input(&self) {
-
-    }
 }
+
+pub const FONT_SET: [u8; 80] = [
+    0xF0,
+    0x90,
+    0x90,
+    0x90,
+    0xF0,
+    0x20,
+    0x60,
+    0x20,
+    0x20,
+    0x70,
+    0xF0,
+    0x10,
+    0xF0,
+    0x80,
+    0xF0,
+    0xF0,
+    0x10,
+    0xF0,
+    0x10,
+    0xF0,
+    0x90,
+    0x90,
+    0xF0,
+    0x10,
+    0x10,
+    0xF0,
+    0x80,
+    0xF0,
+    0x10,
+    0xF0,
+    0xF0,
+    0x80,
+    0xF0,
+    0x90,
+    0xF0,
+    0xF0,
+    0x10,
+    0x20,
+    0x40,
+    0x40,
+    0xF0,
+    0x90,
+    0xF0,
+    0x90,
+    0xF0,
+    0xF0,
+    0x90,
+    0xF0,
+    0x10,
+    0xF0,
+    0xF0,
+    0x90,
+    0xF0,
+    0x90,
+    0x90,
+    0xE0,
+    0x90,
+    0xE0,
+    0x90,
+    0xE0,
+    0xF0,
+    0x80,
+    0x80,
+    0x80,
+    0xF0,
+    0xE0,
+    0x90,
+    0x90,
+    0x90,
+    0xE0,
+    0xF0,
+    0x80,
+    0xF0,
+    0x80,
+    0xF0,
+    0xF0,
+    0x80,
+    0xF0,
+    0x80,
+    0x80,
+];
