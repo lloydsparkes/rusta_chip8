@@ -11,8 +11,9 @@ pub struct Chip8Cpu{
     memory: [u8; 4096],
     registers: [u8; 16],
     index_register: u16,
+    last_program_counter: usize,
     program_counter: usize,
-    pub graphics_memory: [[u8; CHIP8_WIDTH]; CHIP8_HEIGHT],
+    graphics_memory: [[u8; CHIP8_WIDTH]; CHIP8_HEIGHT],
     delay_timer: u8,
     sound_timer: u8,
     next_increment: usize,
@@ -20,7 +21,6 @@ pub struct Chip8Cpu{
 
     stack: [usize; 16],
     stack_pointer: usize,
-    pub input_keys: [u8; 16]
 }
 
 impl Chip8Cpu{
@@ -29,6 +29,7 @@ impl Chip8Cpu{
             memory: [0; 4096],
             registers: [0; 16],
             index_register: 0,
+            last_program_counter: 0x200,
             program_counter: 0x200,
             graphics_memory: [[0; CHIP8_WIDTH]; CHIP8_HEIGHT],
             delay_timer: 0,
@@ -38,9 +39,12 @@ impl Chip8Cpu{
 
             stack: [0; 16],
             stack_pointer: 0,
-            input_keys: [0; 16]
         };
         return new_cpu;
+    }
+
+    pub fn gfx(&self) -> &[[u8; CHIP8_WIDTH]; CHIP8_HEIGHT] {
+        return &self.graphics_memory;
     }
 
     pub fn load_rom(&mut self, filename: &str) {
@@ -52,8 +56,8 @@ impl Chip8Cpu{
             0
         };
 
-        for (i, &byte) in FONT_SET.iter().enumerate() {
-            self.memory[i] = byte;
+        for i in 0..FONT_SET.len() {
+            self.memory[i] = FONT_SET[i];
         }
 
         for (i, &byte) in buffer.iter().enumerate() {
@@ -149,6 +153,12 @@ impl Chip8Cpu{
         }
         self.program_counter = self.program_counter + self.next_increment;
 
+        // if self.last_program_counter == self.program_counter {
+        //     self.dump(self.program_counter);
+        //     panic!();
+        // }
+        self.last_program_counter = self.program_counter;
+
         // Update Timers
         if self.delay_timer > 0 {
             self.delay_timer -= 1;
@@ -158,6 +168,17 @@ impl Chip8Cpu{
         }
 
         return (self.refresh_graphics, self.sound_timer > 0);
+    }
+
+    fn dump(&self, pc: usize) {
+        println!("Stuck at PC: {:X} - dumping RAM Ox200 for 500 bytes", pc);
+        for ri in (0x200..(0x200+500)).step_by(2) {
+            let opcode_1 = self.memory[ri];
+            let opcode_2 = self.memory[ri+1];
+            let joined_opcode = (opcode_1 as u16) << 8 | opcode_2 as u16;
+
+            println!("MEM: {:X} :: {:X}", ri, joined_opcode)
+        }
     }
 
     fn get_key(&self, keypad: [bool; 16]) -> u8 {
@@ -180,7 +201,7 @@ impl Chip8Cpu{
                 let x = source_x + bit % CHIP8_WIDTH;
                 let color = (self.memory[base_src+byte] >> (7-bit)) & 1;
                 flag |= color & self.graphics_memory[y][x];
-                self.graphics_memory[y][x] = color;
+                self.graphics_memory[y][x] ^= color;
             }
         }
         self.s_r(0x0F, flag);
@@ -267,7 +288,6 @@ impl Chip8Cpu{
     }
 
     fn g_r8(&self, reg: u8) -> u8 {
-        println!("G_R8 {}", reg);
         return self.registers[reg as usize];
     }
 

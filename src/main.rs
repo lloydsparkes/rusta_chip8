@@ -6,6 +6,8 @@ mod chip8;
 use std::env;
 use std::thread;
 use std::time::Duration;
+use std::io;
+use std::io::prelude::*;
 
 use ui::Display;
 use ui::Input;
@@ -29,11 +31,12 @@ fn main() {
 
         let (should_draw, should_beep) = cpu.cycle(keys);
 
-        if should_draw {
-            dsp.draw(&cpu.graphics_memory);
+        if should_draw {           
+            dsp.draw(cpu.gfx());
+            //pause();
         }
     
-        if(should_beep){
+        if should_beep {
             // Start beep
         } else {
             // End Beep
@@ -41,4 +44,17 @@ fn main() {
 
         thread::sleep(sleep_duration);
     }
+}
+
+fn pause() {
+    let mut stdin = io::stdin();
+    let mut stdout = io::stdout();
+
+    // We want the cursor to stay at the end of the line, so we print without a newline and flush manually.
+    write!(stdout, "Press any key to continue...").unwrap();
+    stdout.flush().unwrap();
+
+    // Read a single byte and discard
+    let _ = stdin.read(&mut [0u8]).unwrap();
+    println!();
 }

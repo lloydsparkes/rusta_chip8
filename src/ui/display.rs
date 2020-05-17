@@ -38,13 +38,14 @@ impl Display{
     }
 
     pub fn draw(&mut self, pixels: &[[u8; CHIP8_WIDTH]; CHIP8_HEIGHT]){
-        for row in 0..CHIP8_HEIGHT{
-            for column in 0..CHIP8_WIDTH{
-                let col = self.color(pixels[row][column]);
-                self.canvas.set_draw_color(col);
-                let c_scale = (column as i32) * SCALE_FACTOR as i32;
-                let r_scale = (row as i32) * SCALE_FACTOR as i32;
-                let _ = self.canvas.fill_rect(Rect::new(c_scale, r_scale, SCALE_FACTOR, SCALE_FACTOR));
+        for (y, row) in pixels.iter().enumerate() {
+            for (x, &col) in row.iter().enumerate() {
+                self.canvas.set_draw_color(self.color(col));
+                let x = (x as u32) * SCALE_FACTOR;
+                let y = (y as u32) * SCALE_FACTOR;
+                
+                let _ = self.canvas
+                    .fill_rect(Rect::new(x as i32, y as i32, SCALE_FACTOR, SCALE_FACTOR));
             }
         }
         self.canvas.present();
