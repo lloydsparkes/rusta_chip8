@@ -82,14 +82,16 @@ impl Chip8Cpu{
         let op_ra = ((joined_opcode >> 8) as u8) & 0x0F; //Op Code Reg A
         let op_rb = ((joined_opcode as u8) & 0xF0) >> 4; //Op Code Reg B
         let op_c = joined_opcode as u8; // Op Code Constant
+        let op_draw_n = (joined_opcode & 0x000F) as usize;
 
         self.next_increment = 2;
+        self.refresh_graphics = false;
 
         println!("PC: {:X} OP {:X} OP_I: {:X} OP_ADDR: {:X} OP_REGA: {:X} OP_REGB: {:X} OP_CONSTANT:{:X}", self.program_counter, joined_opcode, op_i, op_ad, op_ra, op_rb, op_c);
         match op_i {
             0x0000 => {
                 match joined_opcode {
-                    0x00E0 => { }, // Display Clear
+                    0x00E0 => { self.clear_display() }, // Display Clear
                     0x00EE => { self.ret() }, // Return
                     _ => { } //self.call(op_ad) }
                 }
@@ -120,7 +122,7 @@ impl Chip8Cpu{
             0xA000 => { self.s_i(op_ad)},
             0xB000 => { self.jump(self.g_r16(0) + op_ad)},
             0xC000 => { self.s_r(op_ra, self.rand(op_c))},
-            0xD000 => { self.draw_sprite(op_ra, op_rb, op_ad as usize) },
+            0xD000 => { self.draw_sprite(op_ra, op_rb, op_draw_n) },
             0xE000 => { 
                 match op_c {
                     0x9E => { self.compare(self.g_r8(op_ra), self.get_key(keypad), true) },
@@ -190,17 +192,32 @@ impl Chip8Cpu{
         return 0;
     }
 
+    fn clear_display(&mut self){
+        for y in 0..CHIP8_HEIGHT {
+            for x in 0..CHIP8_WIDTH {
+                self.graphics_memory[y][x] = 0;
+            }
+        }
+        self.refresh_graphics = true;
+    }
+
     fn draw_sprite(&mut self, x: u8, y: u8, n: usize){
         let base_src = self.index_register as usize;
         let source_x = self.g_r8(x) as usize;
         let source_y = self.g_r8(y) as usize;
         let mut flag = 0;
+
+        println!("DRAW I={} DEST X,Y = {},{}. Size={}", self.index_register, source_x, source_y, n);        
+
         for byte in 0usize..n {
             let y = (source_y + byte) % CHIP8_HEIGHT;
             for bit in 0usize..8{
                 let x = source_x + bit % CHIP8_WIDTH;
                 let color = (self.memory[base_src+byte] >> (7-bit)) & 1;
                 flag |= color & self.graphics_memory[y][x];
+                if color == 1 {
+                    println!("DRAWING AT {},{} = 1", x, y)
+                }
                 self.graphics_memory[y][x] ^= color;
             }
         }
