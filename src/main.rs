@@ -33,7 +33,7 @@ fn main() {
 
         if should_draw {           
             dsp.draw(cpu.gfx());
-            //pause();
+            pause();
         }
     
         if should_beep {

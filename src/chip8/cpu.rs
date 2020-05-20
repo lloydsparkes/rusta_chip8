@@ -118,7 +118,7 @@ impl Chip8Cpu{
                     _ => {} // Error
                 }                
             },
-            0x9000 => { self.compare(op_ra, op_rb, true) },
+            0x9000 => { self.compare(self.g_r8(op_ra), self.g_r8(op_rb), true) },
             0xA000 => { self.s_i(op_ad)},
             0xB000 => { self.jump(self.g_r16(0) + op_ad)},
             0xC000 => { self.s_r(op_ra, self.rand(op_c))},
@@ -207,17 +207,12 @@ impl Chip8Cpu{
         let source_y = self.g_r8(y) as usize;
         let mut flag = 0;
 
-        println!("DRAW I={} DEST X,Y = {},{}. Size={}", self.index_register, source_x, source_y, n);        
-
         for byte in 0usize..n {
             let y = (source_y + byte) % CHIP8_HEIGHT;
             for bit in 0usize..8{
                 let x = source_x + bit % CHIP8_WIDTH;
                 let color = (self.memory[base_src+byte] >> (7-bit)) & 1;
                 flag |= color & self.graphics_memory[y][x];
-                if color == 1 {
-                    println!("DRAWING AT {},{} = 1", x, y)
-                }
                 self.graphics_memory[y][x] ^= color;
             }
         }
@@ -321,7 +316,6 @@ impl Chip8Cpu{
     }
 
     fn call(&mut self, dest: u16) {
-        println!("CALL SP:{:X} DEST:{:X} PC:{:X}", self.stack_pointer, dest, self.program_counter);
         self.stack[self.stack_pointer as usize] = self.program_counter + 2;
         self.stack_pointer += 1;
         self.program_counter = dest as usize;
@@ -339,11 +333,11 @@ impl Chip8Cpu{
     }
 
     fn compare(&mut self, left: u8, right: u8, not: bool){
-        let comp_result = left == right;
+        let comp_result = left == right;        
         if (!not && comp_result) || (not && !comp_result) {
              self.next_increment = 4;
-             return;
         }
+        println!("COMPARE LEFT: {} RIGHT: {} NOT: {}, RESULT: {} - NEXT: {}", left, right, not, comp_result, self.next_increment);
     }
 
     fn s_r(&mut self, dest_reg: u8, value: u8) {
