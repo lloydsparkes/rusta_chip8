@@ -213,7 +213,8 @@ impl Chip8Cpu{
                 let x = source_x + bit % CHIP8_WIDTH;
                 let color = (self.memory[base_src+byte] >> (7-bit)) & 1;
                 flag |= color & self.graphics_memory[y][x];
-                self.graphics_memory[y][x] ^= color;
+                // println!("DRAWING {} @ {},{}", color, x, y);
+                self.graphics_memory[y][x] = color;
             }
         }
         self.s_r(0x0F, flag);
@@ -228,7 +229,7 @@ impl Chip8Cpu{
     }
 
     fn dump_reg(&mut self, limit: u8) {
-        let max_var = limit as usize;
+        let max_var = (limit + 1) as usize;
         let mut dest = self.index_register as usize;
         for n in 0..max_var {
             self.memory[dest] = self.registers[n];
@@ -237,7 +238,7 @@ impl Chip8Cpu{
     }
 
     fn load_reg(&mut self, limit: u8) {
-        let max_var = limit as usize;
+        let max_var = (limit + 1) as usize;
         let mut src = self.index_register as usize;
         for n in 0..max_var {
             self.registers[n] = self.memory[src];
